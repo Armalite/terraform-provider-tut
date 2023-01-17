@@ -37,4 +37,5 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	port := d.Get("port").(int)
 	token := d.Get("token").(string)
 	return client.NewClient(address, port, token), nil
+
 }
