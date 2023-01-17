@@ -30,3 +30,43 @@ func resourceItem() *schema.Resource {
 		},
 	}
 }
+
+func resourceCreateItem(d *schema.ResourceData, m interface{}) error {
+	apiClient := m.(*client.Client)
+
+	tfTags := d.Get("tags").(*schema.Set).List()
+	tags := make([]string, len(tfTags))
+	for i, tfTag := range tfTags {
+		tags[i] = tfTag.(string)
+	}
+
+	item := server.Item{
+		Name:        d.Get("name").(string),
+		Description: d.Get("description").(string),
+		Tags:        tags,
+	}
+
+	err := apiClient.NewItem(&item)
+
+	if err != nil {
+		return err
+	}
+	d.SetId(item.Name)
+	return nil
+}
+
+func validateName(v interface{}, k string) (ws []string, es []error) {
+	var errs []error
+	var warns []string
+	value, ok := v.(string)
+	if !ok {
+		errs = append(errs, fmt.Errorf("Expected name to be string"))
+		return warns, errs
+	}
+	whiteSpace := regexp.MustCompile(`\s+`)
+	if whiteSpace.Match([]byte(value)) {
+		errs = append(errs, fmt.Errorf("name cannot contain whitespace. Got %s", value))
+		return warns, errs
+	}
+	return warns, errs
+}
