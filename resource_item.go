@@ -1,4 +1,33 @@
+package provider
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/hashicorp/terraform/helper/schema"
+	"github.com/spaceapegames/terraform-provider-example/api/client"
+	"github.com/spaceapegames/terraform-provider-example/api/server"
+)
+
+func validateName(v interface{}, k string) (ws []string, es []error) {
+	var errs []error
+	var warns []string
+	value, ok := v.(string)
+	if !ok {
+		errs = append(errs, fmt.Errorf("Expected name to be string"))
+		return warns, errs
+	}
+	whiteSpace := regexp.MustCompile(`\s+`)
+	if whiteSpace.Match([]byte(value)) {
+		errs = append(errs, fmt.Errorf("name cannot contain whitespace. Got %s", value))
+		return warns, errs
+	}
+	return warns, errs
+}
+
 func resourceItem() *schema.Resource {
+	fmt.Print()
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
 			"name": {
@@ -55,18 +84,72 @@ func resourceCreateItem(d *schema.ResourceData, m interface{}) error {
 	return nil
 }
 
-func validateName(v interface{}, k string) (ws []string, es []error) {
-	var errs []error
-	var warns []string
-	value, ok := v.(string)
-	if !ok {
-		errs = append(errs, fmt.Errorf("Expected name to be string"))
-		return warns, errs
+func resourceReadItem(d *schema.ResourceData, m interface{}) error {
+	apiClient := m.(*client.Client)
+
+	itemId := d.Id()
+	item, err := apiClient.GetItem(itemId)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			d.SetId("")
+		} else {
+			return fmt.Errorf("error finding Item with ID %s", itemId)
+		}
 	}
-	whiteSpace := regexp.MustCompile(`\s+`)
-	if whiteSpace.Match([]byte(value)) {
-		errs = append(errs, fmt.Errorf("name cannot contain whitespace. Got %s", value))
-		return warns, errs
+
+	d.SetId(item.Name)
+	d.Set("name", item.Name)
+	d.Set("description", item.Description)
+	d.Set("tags", item.Tags)
+	return nil
+}
+
+func resourceUpdateItem(d *schema.ResourceData, m interface{}) error {
+	apiClient := m.(*client.Client)
+
+	tfTags := d.Get("tags").(*schema.Set).List()
+	tags := make([]string, len(tfTags))
+	for i, tfTag := range tfTags {
+		tags[i] = tfTag.(string)
 	}
-	return warns, errs
+
+	item := server.Item{
+		Name:        d.Get("name").(string),
+		Description: d.Get("description").(string),
+		Tags:        tags,
+	}
+
+	err := apiClient.UpdateItem(&item)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func resourceDeleteItem(d *schema.ResourceData, m interface{}) error {
+	apiClient := m.(*client.Client)
+
+	itemId := d.Id()
+
+	err := apiClient.DeleteItem(itemId)
+	if err != nil {
+		return err
+	}
+	d.SetId("")
+	return nil
+}
+
+func resourceExistsItem(d *schema.ResourceData, m interface{}) (bool, error) {
+	apiClient := m.(*client.Client)
+
+	itemId := d.Id()
+	_, err := apiClient.GetItem(itemId)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return false, nil
+		} else {
+			return false, err
+		}
+	}
+	return true, nil
 }
